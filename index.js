@@ -1,8 +1,6 @@
-//if(process.env.NODE_ENV !== 'production'){
-//   require('dotenv').config();
-//}
-
-require('dotenv').config();
+if(process.env.NODE_ENV !== 'production'){
+       require('dotenv').config();
+    }
 
 const express = require('express');
 const path=require('path');
@@ -16,15 +14,13 @@ const passport=require('passport');
 const LocalStrategy=require("passport-local");
 const User=require('./models/user');
 const helmet=require('helmet');
-
 const mongoSanitize = require('express-mongo-sanitize');
-
-
 const userRoutes=require('./routes/users');
 const campgroundRoutes=require('./routes/campgrounds');
 const reviewRoutes=require('./routes/reviews');
-
-mongoose.connect('mongodb://127.0.0.1:27017/yelpCamp',{
+const MongoDBStore=require("connect-mongo")(session);
+const dbUrl='mongodb://127.0.0.1:27017/yelpCamp';
+mongoose.connect(dbUrl,{
     useNewUrlParser: true,
     useUnifiedTopology: true
 });
@@ -44,10 +40,25 @@ app.set('views', path.join(__dirname,'views'));
 app.use(express.urlencoded({extended:true}));
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname,'public')));
-app.use(mongoSanitize())
+app.use(mongoSanitize({
+    replaceWith: '_'
+}))
+
+const secret= process.env.SECRET || 'thisshouldbeabettersecret!';
+
+const store=new MongoDBStore({
+    url:dbUrl,
+    secret,
+    touchAfter:24*60*60
+})
+
+store.on("error",function(e){
+    console.log("SESSION STORE ERROR",e)
+})
 
 const sessionConfig={
-    secret: 'thisshouldbeabettersecret!',
+    secret,
+    name:'session',
     resave: false,
     saveUninitialized: true,
     cookie:{
@@ -114,17 +125,10 @@ passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
 app.use((req,res,next)=>{
-    console.log(req.query);
     res.locals.currentUser=req.user;
     res.locals.success=req.flash('success');
     res.locals.error=req.flash('error');
     next();
-})
-
-app.get('/fakeUser',async(req,res)=>{
-    const user=new User({email:'divy@gmail.com', username:'shahi'});
-    const newUser=await User.register(user,'chicken');
-    res.send(newUser);
 })
 
 app.use('/',userRoutes)
@@ -145,6 +149,7 @@ app.use((err,req,res,next)=>{
     res.status(statusCode).render('error',{err});
 })
 
-app.listen(3000,()=>{
-    console.log('serving on port 3000')
+const port=process.env.PORT || 3000;
+app.listen(port,()=>{
+    console.log(`Serving on port ${port}`)
 })
